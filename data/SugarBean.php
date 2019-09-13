@@ -544,7 +544,7 @@ class SugarBean
      */
     public function populateDefaultValues($force = false)
     {
-        if (!is_array($this->field_defs)) {
+        if (!is_array($this->field_defs) && $this->module_name != "Audit") {
             $GLOBALS['log']->fatal('SugarBean::populateDefaultValues $field_defs should be an array');
             return;
         }
