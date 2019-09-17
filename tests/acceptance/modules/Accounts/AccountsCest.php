@@ -19,6 +19,7 @@ class AccountsCest
      */
     public function _before(AcceptanceTester $I)
     {
+        $I->dontSeeMissingLabels();
         if (!$this->fakeData) {
             $this->fakeData = Faker\Factory::create();
         }
