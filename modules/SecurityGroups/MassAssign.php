@@ -48,10 +48,10 @@ elseif (isset($_REQUEST['entire'])) {
         $where = '';
     }
     $export_where = !empty($_SESSION['export_where']) ? $_SESSION['export_where'] : '';
-    if (empty($_REQUEST['export_where_md5']) || $_REQUEST['export_where_md5'] != md5($export_where)) {
+    if (empty($_REQUEST['export_where_md5']) || $_REQUEST['export_where_md5'] !== md5($export_where)) {
         $err = translate('LBL_ERROR_EXPORT_WHERE_CHANGED', 'SecurityGroups');
         SugarApplication::appendErrorMessage($err);
-        header("Location: index.php?action={$_POST['return_action']}&module={$_POST['return_module']}");
+        SugarApplication::redirect("Location: index.php?action={$_POST['return_action']}&module={$_POST['return_module']}");
         sugar_die('');
     }
     if (empty($order_by)) {
