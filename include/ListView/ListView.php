@@ -507,7 +507,8 @@ class ListView
                                     $button_contents[] = $_content;
                                     unset($_content);
                                 } else {
-                                    $button_contents[] = '';
+                                    $_content = $layout_manager->widgetDisplay($list_field);
+                                    $button_contents[] = (empty($_content)) ? '' : $_content;
                                 }
                             } else {
                                 $count++;
