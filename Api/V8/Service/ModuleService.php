@@ -90,6 +90,7 @@ class ModuleService
      */
     public function getRecords(GetModulesParams $params, Request $request)
     {
+        global $db;
         // this whole method should split into separated classes later
         $module = $params->getModuleName();
         $orderBy = $params->getSort();
@@ -112,57 +113,101 @@ class ModuleService
         $realRowCount = $this->beanManager->countRecords($module, $where);
         $limit = $size === BeanManager::DEFAULT_ALL_RECORDS ? BeanManager::DEFAULT_LIMIT : $size;
         $deleted = $params->getDeleted();
+        $data = [];
 
         if (empty($fields)) {
             $fields = $this->beanManager->getDefaultFields($bean);
         }
 
-        $beanListResponse = $this->beanManager->getList($module)
-            ->orderBy($orderBy)
-            ->where($where)
-            ->offset($offset)
-            ->limit($limit)
-            ->max($size)
-            ->deleted($deleted)
-            ->fields($this->beanManager->filterAcceptanceFields($bean, $fields))
-            ->fetch();
+
+        // Detect if bean has email field
+        if ((property_exists($bean, 'email1') && strpos($where, 'email1')) || (property_exists($bean,
+                    'email2') && strpos($where, 'email2'))) {
 
 
-        $beanArray = [];
-        foreach ($beanListResponse->getBeans() as $bean) {
-            $bean = $this->beanManager->getBeanSafe(
-                $params->getModuleName(),
-                $bean->id
-            );
-            $beanArray[] = $bean;
+
+            $selectedFields = substr( strtolower($module), 0, 1).'.'. implode(','. substr( strtolower($module), 0, 1).'.' , $fields);
+
+            $quotedFields = $db->quote {
+                $selectedFields
+            };
+
+            $selectedModule = strtolower($module).' ' . substr( strtolower($module), 0, 1);
+
+            $quotedModule = $db->quote {
+                $selectedModule
+            };
+
+            $selectedModuleName = "'" . $module . "'";
+
+            $quotedModuleName = $db->quote {
+              $selectedModuleName
+            };
+
+            $selectEmailAddress = "'" . $_REQUEST['filter'] ['email1'] ['eq'] . "'";
+
+            $query = "SELECT {$selectedFields} FROM email_addresses ea join email_addr_bean_rel eabr on ea.id = eabr.email_address_id join {$selectedModule} on a.id = eabr.bean_id ";
+            $query .= " where email_address= '" . $_REQUEST['filter']['email1']['eq'] . "'";
+            $query .= " and eabr.bean_module= '" . $module . "'";
+
+
+           $result = $db->query($query, true, "");
+
+//           $data = $db->fetchByAssoc($result);
+
+           while (($row = $db->fetchByAssoc($result))) {
+               $data[] = $row;
+           }
+
+
+            } else {
+           $beanListResponse = $this->beanManager->getList($module)
+               ->orderBy($orderBy)
+               ->where($where)
+               ->offset($offset)
+               ->limit($limit)
+               ->max($size)
+               ->deleted($deleted)
+               ->fields($this->beanManager->filterAcceptanceFields($bean, $fields))
+               ->fetch();
+
+
+           $beanArray = [];
+           foreach ($beanListResponse->getBeans() as $bean) {
+               $bean = $this->beanManager->getBeanSafe(
+                   $params->getModuleName(),
+                   $bean->id
+               );
+               $beanArray[] = $bean;
+           }
+           $data = [];
+           foreach ($beanArray as $bean) {
+               $dataResponse = $this->getDataResponse(
+                   $bean,
+                   $fields,
+                   $request->getUri()->getPath() . '/' . $bean->id
+               );
+
+               $data[] = $dataResponse;
+           }
+       }
+
+            $response = new DocumentResponse();
+            $response->setData($data);
+
+            // pagination
+            if ($data && $limit !== BeanManager::DEFAULT_LIMIT) {
+                $totalPages = ceil($realRowCount / $size);
+
+                $paginationMeta = $this->paginationHelper->getPaginationMeta($totalPages, count($data));
+                $paginationLinks = $this->paginationHelper->getPaginationLinks($request, $totalPages, $number);
+
+                $response->setMeta($paginationMeta);
+                $response->setLinks($paginationLinks);
+            }
+
+            return $response;
         }
-        $data = [];
-        foreach ($beanArray as $bean) {
-            $dataResponse = $this->getDataResponse(
-                $bean,
-                $fields,
-                $request->getUri()->getPath() . '/' . $bean->id
-            );
-
-            $data[] = $dataResponse;
-        }
-
-        $response = new DocumentResponse();
-        $response->setData($data);
-
-        // pagination
-        if ($data && $limit !== BeanManager::DEFAULT_LIMIT) {
-            $totalPages = ceil($realRowCount / $size);
-
-            $paginationMeta = $this->paginationHelper->getPaginationMeta($totalPages, count($data));
-            $paginationLinks = $this->paginationHelper->getPaginationLinks($request, $totalPages, $number);
-
-            $response->setMeta($paginationMeta);
-            $response->setLinks($paginationLinks);
-        }
-
-        return $response;
-    }
 
     /**
      * @param CreateModuleParams $params
