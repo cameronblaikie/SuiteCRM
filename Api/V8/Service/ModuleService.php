@@ -1,7 +1,7 @@
 <?php
-
 namespace Api\V8\Service;
 
+use Api\V8\BeanDecorator\BeanListResponse;
 use Api\V8\BeanDecorator\BeanManager;
 use Api\V8\JsonApi\Helper\AttributeObjectHelper;
 use Api\V8\JsonApi\Helper\PaginationObjectHelper;
@@ -50,7 +50,7 @@ class ModuleService
         AttributeObjectHelper $attributeHelper,
         RelationshipObjectHelper $relationshipHelper,
         PaginationObjectHelper $paginationHelper
-    ) {
+    ){
         $this->beanManager = $beanManager;
         $this->attributeHelper = $attributeHelper;
         $this->relationshipHelper = $relationshipHelper;
@@ -86,12 +86,13 @@ class ModuleService
     /**
      * @param GetModulesParams $params
      * @param Request $request
-     * @return DocumentResponse
+     * @param int $row_offset starting position
+     * @return BeanListResponse
      * @throws AccessDeniedException
      */
     public function getRecords(GetModulesParams $params, Request $request)
     {
-        global $db;
+        global $db, $sugar_config;
         // this whole method should split into separated classes later
         $module = $params->getModuleName();
         $orderBy = $params->getSort();
@@ -119,96 +120,103 @@ class ModuleService
         if (empty($fields)) {
             $fields = $this->beanManager->getDefaultFields($bean);
         }
-
-
         // Detect if bean has email field
         if ((property_exists($bean, 'email1') && strpos($where, 'email1')) || (property_exists($bean,
                     'email2') && strpos($where, 'email2'))) {
+            $selectedFields = strtolower($module) . '.' . implode(',' . substr(strtolower($module), 0, 1) . '.', $fields);
+            $selectedModule = strtolower($module);
 
+            //Selects Module or COUNT(*) and will add one to the query.
+            $idSelect = "SELECT {$selectedModule}.id ";
+            $countSelect = 'SELECT COUNT(*) AS cnt ';
 
+            //Email where clause
+            $fromQuery = "FROM email_addresses join email_addr_bean_rel on email_addresses.id = email_addr_bean_rel.email_address_id join {$selectedModule} on {$selectedModule}.id = email_addr_bean_rel.bean_id ";
+            $modifiedWhere = str_replace("accounts.email1", "email_addresses.email_address", $where);
+            $where = "$modifiedWhere";
 
-            $selectedFields = substr( strtolower($module), 0, 1).'.'. implode(','. substr( strtolower($module), 0, 1).'.' , $fields);
-
-            $quotedFields = $db->quote {
-                $selectedFields
-            };
-
-            $selectedModule = strtolower($module).' ' . substr( strtolower($module), 0, 1);
-
-            $quotedModule = $db->quote {
-                $selectedModule
-            };
-
-            $selectedModuleName = "'" . $module . "'";
-
-            $quotedModuleName = $db->quote {
-              $selectedModuleName
-            };
-
-            $selectEmailAddress = "'" . $_REQUEST['filter'] ['email1'] ['eq'] . "'";
-
-            $query = "SELECT {$selectedFields} FROM email_addresses ea join email_addr_bean_rel eabr on ea.id = eabr.email_address_id join {$selectedModule} on a.id = eabr.bean_id ";
-            $query .= " where email_address= '" . $_REQUEST['filter']['email1']['eq'] . "'";
-            $query .= " and eabr.bean_module= '" . $module . "'";
-
-
-           $result = $db->query($query, true, "");
-
-//           $data = $db->fetchByAssoc($result);
-
-           while (($row = $db->fetchByAssoc($result))) {
-               $data[] = $row;
-           }
-
-
+            //Sets and adds deleted to the query
+            if ($deleted == 0) {
+                $where_auto = "$bean->table_name.deleted=0";
+            } elseif ($deleted == 1) {
+                $where_auto = "$bean->table_name.deleted=1";
+            }
+            if ($where != "") {
+                $where = " where ($where) AND $where_auto";
             } else {
-           $beanListResponse = $this->beanManager->getList($module)
-               ->orderBy($orderBy)
-               ->where($where)
-               ->offset($offset)
-               ->limit($limit)
-               ->max($size)
-               ->deleted($deleted)
-               ->fields($this->beanManager->filterAcceptanceFields($bean, $fields))
-               ->fetch();
-
-
-           $beanArray = [];
-           foreach ($beanListResponse->getBeans() as $bean) {
-               $bean = $this->beanManager->getBeanSafe(
-                   $params->getModuleName(),
-                   $bean->id
-               );
-               $beanArray[] = $bean;
-           }
-           $data = [];
-           foreach ($beanArray as $bean) {
-               $dataResponse = $this->getDataResponse(
-                   $bean,
-                   $fields,
-                   $request->getUri()->getPath() . '/' . $bean->id
-               );
-
-               $data[] = $dataResponse;
-           }
-       }
-
-            $response = new DocumentResponse();
-            $response->setData($data);
-
-            // pagination
-            if ($data && $limit !== BeanManager::DEFAULT_LIMIT) {
-                $totalPages = ceil($realRowCount / $size);
-
-                $paginationMeta = $this->paginationHelper->getPaginationMeta($totalPages, count($data));
-                $paginationLinks = $this->paginationHelper->getPaginationLinks($request, $totalPages, $number);
-
-                $response->setMeta($paginationMeta);
-                $response->setLinks($paginationLinks);
+                $where = " where $where_auto";
             }
 
-            return $response;
+            //Joins parts together to form query
+            $query = $idSelect . $fromQuery . $where;
+            $countQuery = $countSelect . $fromQuery . $where;
+            $realRowCount = (int)$db->fetchRow($db->query($countQuery, true, ""))["cnt"];;
+
+            //Sets orderby into the query
+            $order_by = $bean->process_order_by($orderBy);
+            if (!empty($orderBy)) {
+                $query .= ' ORDER BY ' . $order_by;
+            }
+
+            $result = $bean->process_list_query($query, $offset, $limit, -1, $where);
+            $beanResult['row_count'] = $result['row_count'];
+            $beanList = [];
+
+            foreach($result['list'] as $resultBean)
+            {
+                $queryModuleBean = \BeanFactory::newBean($module);
+                $queryModuleBean->id = $resultBean->id;
+                array_push($beanList, $queryModuleBean);
+            }
+            $beanResult['list'] = $beanList;
+            $beanListResponse = new BeanListResponse($beanResult);
+        } else {
+            $beanListResponse = $this->beanManager->getList($module)
+                ->orderBy($orderBy)
+                ->where($where)
+                ->offset($offset)
+                ->limit($limit)
+                ->max($size)
+                ->deleted($deleted)
+                ->fields($this->beanManager->filterAcceptanceFields($bean, $fields))
+                ->fetch();
         }
+
+            $beanArray = [];
+            foreach ($beanListResponse->getBeans() as $bean) {
+                $bean = $this->beanManager->getBeanSafe(
+                    $params->getModuleName(),
+                    $bean->id
+                );
+                $beanArray[] = $bean;
+            }
+            $data = [];
+            foreach ($beanArray as $bean) {
+                $dataResponse = $this->getDataResponse(
+                    $bean,
+                    $fields,
+                    $request->getUri()->getPath() . '/' . $bean->id
+                );
+
+                $data[] = $dataResponse;
+        }
+
+        $response = new DocumentResponse();
+        $response->setData($data);
+
+        // pagination
+        if ($data && $limit !== BeanManager::DEFAULT_LIMIT) {
+            $totalPages = ceil($realRowCount / $size);
+
+            $paginationMeta = $this->paginationHelper->getPaginationMeta($totalPages, count($data));
+            $paginationLinks = $this->paginationHelper->getPaginationLinks($request, $totalPages, $number);
+
+            $response->setMeta($paginationMeta);
+            $response->setLinks($paginationLinks);
+        }
+
+        return $response;
+    }
 
     /**
      * @param CreateModuleParams $params
@@ -244,12 +252,12 @@ class ModuleService
         }
 
         $this->setRecordUpdateParams($bean, $attributes);
-        $fileUpload = $this->processAttributes($bean, $attributes);
+
+        foreach ($attributes as $property => $value) {
+            $bean->$property = $value;
+        }
 
         $bean->save();
-        if ($fileUpload) {
-            $this->addFileToNote($bean->id, $attributes);
-        }
         $bean->retrieve($bean->id);
 
         $dataResponse = $this->getDataResponse(
@@ -262,50 +270,6 @@ class ModuleService
         $response->setData($dataResponse);
 
         return $response;
-    }
-
-    /**
-     * @param $beanId
-     * @param $attributes
-     * @throws \Exception
-     */
-    private function addFileToNote($beanId, $attributes)
-    {
-        global $sugar_config, $log;
-
-        \BeanFactory::unregisterBean('Notes', $beanId);
-        $bean = $this->beanManager->getBeanSafe('Notes', $beanId);
-
-        // Write file to upload dir
-        try {
-            // Checking file extension
-            $extPos = strrpos($attributes['filename'], '.');
-            $fileExtension = substr($attributes['filename'], $extPos + 1);
-
-            if ($extPos === false || empty($fileExtension) || in_array($fileExtension, $sugar_config['upload_badext'],
-                    true)) {
-                throw new \Exception('File upload failed: File extension is not included or is not valid.');
-            }
-
-            $fileName = $bean->id;
-            $fileContents = $attributes['filecontents'];
-            $targetPath = 'upload/' . $fileName;
-            $content = base64_decode($fileContents);
-
-            $file = fopen($targetPath, 'wb');
-            fwrite($file, $content);
-            fclose($file);
-        } catch (\Exception $e) {
-            $log->error('addFileToNote: ' . $e->getMessage());
-            throw new \Exception($e->getMessage());
-        }
-
-        // Fill in file details for use with upload checks
-        $mimeType = mime_content_type($targetPath);
-        $bean->filename = $attributes['filename'];
-        $bean->uploadfile = $attributes['filename'];
-        $bean->file_mime_type = $mimeType;
-        $bean->save();
     }
 
     /**
@@ -326,12 +290,13 @@ class ModuleService
         }
 
         $this->setRecordUpdateParams($bean, $attributes);
-        $fileUpload = $this->processAttributes($bean, $attributes);
+
+        foreach ($attributes as $property => $value) {
+            $bean->$property = $value;
+        }
+
         $bean->save();
 
-        if ($fileUpload) {
-            $this->addFileToNote($bean->id, $attributes);
-        }
         $bean->retrieve($bean->id);
 
         $dataResponse = $this->getDataResponse(
@@ -344,30 +309,6 @@ class ModuleService
         $response->setData($dataResponse);
 
         return $response;
-    }
-
-    /**
-     * @param $bean
-     * @param $attributes
-     * @return bool
-     */
-    protected function processAttributes(&$bean, $attributes)
-    {
-        $createFile = false;
-
-        foreach ($attributes as $property => $value) {
-
-            if ($property === 'filecontents') {
-                continue;
-            } elseif ($property === 'filename') {
-                $createFile = true;
-                continue;
-            }
-
-            $bean->$property = $value;
-        }
-
-        return $createFile;
     }
 
     /**
