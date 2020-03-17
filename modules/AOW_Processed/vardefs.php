@@ -162,6 +162,32 @@ $dictionary['AOW_Processed'] = array(
     'bean_name'=>'AOW_Action',
     'source'=>'non-db',
   ),
+  'successful_run' =>
+      array(
+          'required' => false,
+          'name' => 'successful_run',
+          'vname' => 'LBL_SUCCESSFUL_RUN',
+          'type' => 'int',
+          'massupdate' => 0,
+          'default' => 0,
+          'len' => 100,
+          'size' => '20',
+          'studio' => 'visible',
+          'dependency' => false,
+      ),
+  'failed_run' =>
+      array(
+          'required' => false,
+          'name' => 'failed_run',
+          'vname' => 'LBL_FAILED_RUN',
+          'type' => 'int',
+          'massupdate' => 0,
+          'default' => 0,
+          'len' => 100,
+          'size' => '20',
+          'studio' => 'visible',
+          'dependency' => false,
+      ),
 ),
     'relationships'=>array(
 ),
