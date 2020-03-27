@@ -316,10 +316,14 @@ class AOW_WorkFlowTest extends SuitePHPUnitFrameworkTestCase
         //test for a entry in AOW_Processed table.
         $processed = BeanFactory::newBean('AOW_Processed');
         $processed->retrieve_by_string_fields(array('aow_workflow_id' => 1, 'parent_id' => 1));
+        $processed->retrieve_by_string_fields(array('successful_run'=> 1, 'failed_run'=> 1));
 
         //test for record ID to verify that record is saved
         $this->assertTrue(isset($processed->id));
         $this->assertEquals(36, strlen($processed->id));
+
+        $processed->assertTrue(isset($processed->successful_run));
+        $processed->assertTure(isset($processed->failed_run));
 
         //mark the record as deleted and verify that this record cannot be retrieved anymore.
         $processed->mark_deleted($processed->id);

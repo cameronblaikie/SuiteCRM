@@ -1694,6 +1694,8 @@ $app_strings = array(
     'LBL_STATUS' => 'Status:',
     'LBL_STREET' => 'Street',
     'LBL_SUBJECT' => 'Subject',
+    'LBL_SUCCESSFUL_RUN' => 'Successful Run',
+    'LBL_FAILED_RUN' => 'Failed Run',
 
     'LBL_INBOUNDEMAIL_ID' => 'Inbound Email ID',
 

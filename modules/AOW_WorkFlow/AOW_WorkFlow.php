@@ -898,22 +898,56 @@ class AOW_WorkFlow extends Basic
     {
         require_once('modules/AOW_Processed/AOW_Processed.php');
         $processed = BeanFactory::newBean('AOW_Processed');
-        if (!$this->multiple_runs) {
-            $processed->retrieve_by_string_fields(array('aow_workflow_id' => $this->id,'parent_id' => $bean->id));
 
-            if ($processed->status == 'Complete') {
-                //should not have gotten this far, so return
-                return true;
-            }
+        if ($processed->status === 'Complete' && !$this->multiple_runs) {
+            $processed->retrieve_by_string_fields(array('aow_workflow_id' => $this->id,'parent_id' => $bean->id));
         }
+
         $processed->aow_workflow_id = $this->id;
         $processed->parent_id = $bean->id;
         $processed->parent_type = $bean->module_dir;
         $processed->status = 'Running';
-        $processed->save(false);
         $processed->load_relationship('aow_actions');
 
         $pass = true;
+
+        $db = DBManagerFactory::getInstance();
+
+
+        $recordIdQuery = "SELECT id FROM aow_processed WHERE aow_workflow_id = '$this->id'";
+        $selectRecordId = $db->query($recordIdQuery);
+
+        while ($record = $db->fetchByAssoc($selectRecordId)) {
+            $recordId [] = $record['id'];
+        }
+        $recordId = $recordId[0];
+        $processed->retrieve_by_string_fields(array(
+            'id' => $recordId,
+        ));
+
+
+
+        $selectSuccessfulRun = "SELECT successful_run FROM aow_processed WHERE aow_workflow_id = '$this->id'";
+        $selectSuccessfulRunResult = $db->query($selectSuccessfulRun);
+
+        while ($successfulRunResult = $db->fetchByAssoc($selectSuccessfulRunResult)) {
+            $successfulRunCount [] = $successfulRunResult['successful_run'];
+        }
+        $successfulValue = $processed->successful_run = [$successfulRunCount];
+        $successfulValue = $successfulValue[0][0];
+
+
+        $selectFailedRun = "SELECT failed_run FROM aow_processed WHERE aow_workflow_id = '$this->id'";
+        $selectFailedRunResult = $db->query($selectFailedRun);
+
+        while ($failedRunResult = $db->fetchByAssoc($selectFailedRunResult)) {
+            $failedRunCount [] = $failedRunResult['failed_run'];
+        }
+        $failedValue = $processed->failed_run = [$failedRunCount];
+        $failedValue = $failedValue[0][0];
+
+
+
 
         $sql = "SELECT id FROM aow_actions WHERE aow_workflow_id = '".$this->id."' AND deleted = 0 ORDER BY action_order ASC";
         $result = $this->db->query($sql);
@@ -951,8 +985,10 @@ class AOW_WorkFlow extends Basic
 
         if ($pass) {
             $processed->status = 'Complete';
+            $processed->successful_run = ++$successfulValue;
         } else {
             $processed->status = 'Failed';
+            $processed->failed_run = ++$failedValue;
         }
         $processed->save(false);
 

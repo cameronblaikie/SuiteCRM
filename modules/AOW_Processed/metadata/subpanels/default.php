@@ -52,6 +52,14 @@ $subpanel_layout = array(
             'vname' => 'LBL_DATE_MODIFIED',
             'width' => '15%',
         ),
+        'successful_run'=>array(
+            'vname' => 'LBL_SUCCESSFUL_RUN',
+            'width' => '15%',
+        ),
+        'failed_run'=>array(
+            'vname' => 'LBL_FAILED_RUN',
+            'width' => '15%',
+        ),
         'parent_id'=>array(
             'usage'=>'query_only',
         ),

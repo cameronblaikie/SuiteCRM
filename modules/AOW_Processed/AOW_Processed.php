@@ -51,6 +51,8 @@ class AOW_Processed extends Basic
     public $parent_id;
     public $parent_type;
     public $status;
+    public $successful_run;
+    public $failed_run;
 
     public function __construct()
     {
